@@ -11,11 +11,10 @@
 
 namespace Chaplean\Bundle\DtoHandlerBundle\ParamConverter;
 
-use Chaplean\Bundle\DtoHandlerBundle\Annotation\DTO;
 use Chaplean\Bundle\DtoHandlerBundle\ConfigurationExtractor\PropertyConfigurationExtractor;
+use Chaplean\Bundle\DtoHandlerBundle\DataTransferObject\DataTransferObjectInterface;
 use Chaplean\Bundle\DtoHandlerBundle\Exception\DataTransferObjectValidationException;
 use Doctrine\Common\Annotations\AnnotationException;
-use Doctrine\Common\Annotations\AnnotationReader;
 use Sensio\Bundle\FrameworkExtraBundle\Configuration\ParamConverter;
 use Sensio\Bundle\FrameworkExtraBundle\Request\ParamConverter\ParamConverterInterface;
 use Sensio\Bundle\FrameworkExtraBundle\Request\ParamConverter\ParamConverterManager;
@@ -27,10 +26,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\PropertyAccess\PropertyAccessor;
-use Symfony\Component\Translation\TranslatorInterface;
 use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
  * Class DataTransferObjectParamConverter.
@@ -130,9 +129,6 @@ class DataTransferObjectParamConverter implements ParamConverterInterface
      * @param ParamConverter $configuration
      *
      * @return boolean
-     *
-     * @throws AnnotationException
-     * @throws \ReflectionException
      */
     public function apply(Request $originalRequest, ParamConverter $configuration): bool
     {
@@ -140,6 +136,8 @@ class DataTransferObjectParamConverter implements ParamConverterInterface
 
         if (!$isSubDto) {
             $this->extractDataFromMultipartBody($originalRequest);
+        } else if ($originalRequest->attributes->get($configuration->getName()) === null) {
+            return false;
         }
 
         $request = self::cloneRequest($originalRequest);
@@ -182,9 +180,6 @@ class DataTransferObjectParamConverter implements ParamConverterInterface
      * @param ParamConverter $configuration
      *
      * @return boolean
-     *
-     * @throws \ReflectionException
-     * @throws AnnotationException
      */
     public function supports(ParamConverter $configuration): bool
     {
@@ -194,16 +189,7 @@ class DataTransferObjectParamConverter implements ParamConverterInterface
             return false;
         }
 
-        if (\in_array($class, $this->taggedDtoClasses, true)) {
-            return true;
-        }
-
-        $propertyReflectionClass = new \ReflectionClass($class);
-
-        $annotationReader = new AnnotationReader();
-        $typeAnnotation = $annotationReader->getClassAnnotation($propertyReflectionClass, DTO::class);
-
-        return $typeAnnotation !== null;
+        return is_subclass_of($class, DataTransferObjectInterface::class);
     }
 
     /**
@@ -261,7 +247,7 @@ class DataTransferObjectParamConverter implements ParamConverterInterface
         }
 
         if ($propertyConfigurationModel->isCollection()) {
-            $content = $content ?? [];
+            $content = ($content !== '') ? $content ?? [] : [];
 
             foreach ($content as $key => $value) {
                 $paramConfiguration = $this->autoConfigureOne(
